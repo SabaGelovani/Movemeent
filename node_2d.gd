@@ -1,100 +1,174 @@
 extends Node2D
 
-# Define movement speed
-var speed = 500  # Speed in pixels per second
-var moving = false  # Flag to indicate if the sprite is moving
-var target_position = Vector2.ZERO  # The target position to move towards
+var speed = 500  
+var moving = false  
+var target_position = Vector2.ZERO  
+var distance_threshold = 5.0  
+var fuel_loss_rate = 200.0  
+var distance_traveled = 0.0  
 
-# Reference to the moving sprite
-@onready var moving_sprite = $Character  # Main sprite node
-@onready var target_sprite_1 = $PointA  # First clickable target sprite
-@onready var target_sprite_2 = $PointB  # Second clickable target sprite
-@onready var target_sprite_3 = $PointC  # Third clickable target sprite
-@onready var target_sprite_4 = $PointD
-@onready var target_sprite_5 = $PointE
-@onready var target_sprite_6 = $PointF
+# References
+@onready var moving_sprite = $Character  
+@onready var target_sprites = [$PointA, $PointB, $PointC, $PointD, $PointE, $PointF]  
+@onready var coin_manager = $CoinManager  
+@onready var money_popup = $MoneyPopup  
+@onready var popup_label = $MoneyPopup/PopupLabel  
 
-# Called when the node is ready.
+@onready var return_button = $ReturnButton
+
 func _ready():
-	# Initially set the sprite's position to one of the target positions (PointA)
-	moving_sprite.position = target_sprite_1.position
-	target_position = moving_sprite.position
-	moving = false  # Start stationary
+	load_game_data()
+	
+	if return_button:
+		print("ReturnButton found!")
+		return_button.pressed.connect(_on_return_button_pressed)
+	else:
+		print("ReturnButton not found!")
 
-	# Set the moving sprite on top of the target sprites by setting a higher Z-index
-	moving_sprite.z_index = 1
-	target_sprite_1.z_index = 0
-	target_sprite_2.z_index = 0
-	target_sprite_3.z_index = 0
-	target_sprite_4.z_index = 0
-	target_sprite_5.z_index = 0
-	target_sprite_6.z_index = 0
-
-# Called every frame.
 func _process(delta):
 	if moving:
-		# Move the sprite towards the target position smoothly
 		var direction = (target_position - moving_sprite.position).normalized()
 		var movement = direction * speed * delta
 
-		# Stop moving if the sprite is close enough to the target position
-		if moving_sprite.position.distance_to(target_position) < 1:
+		moving_sprite.position += movement
+		distance_traveled += movement.length()  
+
+		if moving_sprite.position.distance_to(target_position) < distance_threshold:
 			moving_sprite.position = target_position
-			moving = false  # Stop moving
-		else:
-			moving_sprite.position += movement
+			moving = false
+
+			var fuel_lost_traveling = int(distance_traveled / fuel_loss_rate)
+			if fuel_lost_traveling > 0:
+				coin_manager.update_fuel(-fuel_lost_traveling)  
+				distance_traveled = 0.0  
+
+			process_coin_change(fuel_lost_traveling)  
+			update_target_position()  
+			save_game_data()  # Save progress
 
 func _input(event):
 	if event is InputEventMouseButton and event.pressed:
-		print("Mouse clicked at:", event.position)  # Debugging info
-		
-	if event is InputEventMouseButton and event.pressed:
-		print("Mouse clicked at:", event.position)  # Debugging info
+		for sprite in target_sprites:
+			if is_click_on_sprite(event.position, sprite):
+				target_position = sprite.position
+				moving = true  
+				distance_traveled = 0.0  
+				break  
 
-		# Check if the mouse click is on any of the target points
-		if is_click_on_sprite(event.position, target_sprite_1):
-			print("Clicked on PointA")
-			target_position = target_sprite_1.position
-			moving = true
-			$CoinManager.handle_coin_change()  # Randomly add or subtract coins
-		elif is_click_on_sprite(event.position, target_sprite_2):
-			print("Clicked on PointB")
-			target_position = target_sprite_2.position
-			moving = true
-			$CoinManager.handle_coin_change()  # Randomly add or subtract coins
-		elif is_click_on_sprite(event.position, target_sprite_3):
-			print("Clicked on PointC")
-			target_position = target_sprite_3.position
-			moving = true
-			$CoinManager.handle_coin_change()  # Randomly add or subtract coins
-		elif is_click_on_sprite(event.position, target_sprite_4):
-			print("Clicked on PointD")
-			target_position = target_sprite_4.position
-			moving = true
-			$CoinManager.handle_coin_change()  # Randomly add or subtract coins
-		elif is_click_on_sprite(event.position, target_sprite_5):
-			print("Clicked on PointE")
-			target_position = target_sprite_5.position
-			moving = true
-			$CoinManager.handle_coin_change()  # Randomly add or subtract coins
-		elif is_click_on_sprite(event.position, target_sprite_6):
-			print("Clicked on PointF")
-			target_position = target_sprite_6.position
-			moving = true
-			$CoinManager.handle_coin_change()  # Randomly add or subtract coins
-
-
-# Check if the mouse click is on a sprite with a custom clickable area.
 func is_click_on_sprite(mouse_position, sprite):
-	if not sprite.texture:  # Ensure the sprite has a texture
+	if not sprite or not sprite.texture:
 		return false
-	
-	# Define custom clickable area (smaller than the texture size)
-	var custom_size = Vector2(50, 50)  # Set the size to something smaller (adjust as needed)
-	
-	# Use the sprite's global position and custom size for accurate detection
-	var sprite_global_position = sprite.global_position
-	var sprite_rect = Rect2(sprite_global_position - custom_size / 2, custom_size)
-	
-	# Check if the mouse position is within the custom clickable area
+
+	var sprite_rect = Rect2(
+		sprite.global_position - (sprite.texture.get_size() * sprite.scale) / 2,
+		sprite.texture.get_size() * sprite.scale
+	)
+
 	return sprite_rect.has_point(mouse_position)
+
+func process_coin_change(fuel_lost_traveling):
+	var coin_change_amount = randi() % 10 + 1  
+	var fuel_change_amount = randi() % 2 + 1  
+
+	var coin_gained = 0
+	var coin_lost = 0
+
+	if randi() % 2 == 0:
+		coin_gained = coin_change_amount  
+		coin_manager.update_money(coin_gained)
+	else:
+		coin_lost = coin_change_amount  
+		coin_manager.update_money(-coin_lost)
+
+	var fuel_gained = fuel_change_amount  
+	coin_manager.update_fuel(fuel_gained)
+
+	show_popup(coin_gained, coin_lost, fuel_gained, fuel_lost_traveling)
+	save_game_data()  # Save progress
+
+func show_popup(coin_amount, coin_loss, fuel_amount, fuel_lost_traveling):
+	var coin_text = ""
+	if coin_amount > 0:
+		coin_text = "Gained " + str(coin_amount) + " coins!"
+	elif coin_loss > 0:
+		coin_text = "Lost " + str(coin_loss) + " coins!"
+
+	var fuel_text = "Gained " + str(fuel_amount) + " fuel!"
+	if fuel_amount > 0:
+		fuel_text = "Gained " + str(fuel_amount) + " fuel!"
+
+	var travel_fuel_text = "Burned " + str(fuel_lost_traveling) + " fuel traveling."
+
+	var full_message = "\n".join([coin_text, fuel_text, travel_fuel_text]).strip_edges()
+
+	popup_label.text = full_message  
+
+	center_popup()
+	money_popup.show()
+
+	await get_tree().create_timer(2).timeout
+	money_popup.hide()
+
+func update_target_position():
+	var current_index = target_sprites.find(target_position)
+	if current_index != -1 and current_index < target_sprites.size() - 1:
+		target_position = target_sprites[current_index + 1].position
+	else:
+		target_position = target_sprites[0].position  
+
+func center_popup():
+	var screen_size = get_viewport_rect().size
+	money_popup.position = (screen_size - Vector2(money_popup.size.x, money_popup.size.y)) / 2
+
+func _on_return_button_pressed():
+	print("Return button clicked! Going back to Main Menu...")
+
+	# Save progress before exiting
+	save_game_data()
+
+	# Load the main menu scene
+	var main_menu_scene = load("res://MainMenu.tscn")  
+	if main_menu_scene:
+		var main_menu_instance = main_menu_scene.instantiate()
+		get_tree().root.add_child(main_menu_instance)
+		get_tree().current_scene = main_menu_instance  
+	else:
+		print("Failed to load Main Menu scene.")
+
+# ---- SAVE & LOAD SYSTEM ---- #
+
+func save_game_data():
+	var save_data = {
+		"position": {"x": moving_sprite.position.x, "y": moving_sprite.position.y},
+		"coins": coin_manager.get_money(),  
+		"fuel": coin_manager.get_fuel(),  
+		"target": target_sprites.find(target_position)
+	}
+	
+	var file = FileAccess.open("user://savegame.json", FileAccess.WRITE)
+	file.store_string(JSON.stringify(save_data))
+	file.close()
+	print("Game progress saved!")
+
+func load_game_data():
+	if FileAccess.file_exists("user://savegame.json"):
+		var file = FileAccess.open("user://savegame.json", FileAccess.READ)
+		var save_data = JSON.parse_string(file.get_as_text())
+		file.close()
+
+		if save_data:
+			# Load position
+			if "position" in save_data:
+				moving_sprite.position = Vector2(save_data["position"]["x"], save_data["position"]["y"])
+
+			# Load coins and fuel
+			if "coins" in save_data:
+				coin_manager.set_money(save_data["coins"])
+			if "fuel" in save_data:
+				coin_manager.set_fuel(save_data["fuel"])
+
+			# Load target position
+			if "target" in save_data and save_data["target"] < target_sprites.size():
+				target_position = target_sprites[save_data["target"]].position
+
+			print("Game progress loaded successfully!")

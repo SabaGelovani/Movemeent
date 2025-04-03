@@ -1,0 +1,27 @@
+[gd_scene load_steps=4 format=3 uid="uid://dce1q3mj7jsoh"]
+
+[ext_resource type="Script" path="res://main_menu.gd" id="1_q2jcs"]
+[ext_resource type="Texture2D" uid="uid://c12yf028kxsm1" path="res://scenes/bridgeeeeeeeee.png" id="2_bppmp"]
+[ext_resource type="PackedScene" uid="uid://cm5m2eeh8beyw" path="res://Node2D.tscn" id="3_cp7n6"]
+
+[node name="Node2D" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_q2jcs")
+
+[node name="PlayButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 795.0
+offset_top = 426.0
+offset_right = 858.0
+offset_bottom = 507.0
+
+[node name="Bridgeeeeeeeee" type="Sprite2D" parent="."]
+position = Vector2(571, 322)
+scale = Vector2(0.296842, 0.298032)
+texture = ExtResource("2_bppmp")
+
+[node name="Note2D" parent="." instance=ExtResource("3_cp7n6")]
+visible = false
+
+[connection signal="pressed" from="PlayButton" to="." method="_on_play_button_pressed"]
